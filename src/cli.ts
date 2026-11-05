@@ -9,6 +9,7 @@ const argv = yargs.options({
     "username": { type: "string", demandOption: true },
     "password": { type: "string", demandOption: true },
     "port": { type: "number", default: 21 },
+    "protocol": { choices: ["ftp", "ftps", "ftps-legacy"], default: "ftp" },
     "local-dir": { type: "string", default: "./" },
     "server-dir": { type: "string", default: "./" },
     "state-name": { type: "string", default: ".ftp-deploy-sync-state.json" },

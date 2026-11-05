@@ -53,6 +53,26 @@ deployMyCode();
 ### Automatically Deploying
 If you use github as source control you can automatically re-deploy your site on every git commit. [Read more](https://github.com/SamKirkland/FTP-Deploy-Action)
 
+### Use this recovery fork as a GitHub Action
+
+This repository includes a composite GitHub Action with the same core inputs used by the original FTP Deploy Action, plus `max-retries` and `retry-delay`. To switch an existing workflow, change only the `uses` reference to this repository and a release tag; keep your existing `with` settings:
+
+```yaml
+- name: Deploy to FTP
+  uses: Hanzyusuf/ftp-deploy@v1.2.6-recovery
+  with:
+    server: ${{ secrets.FTP_SERVER }}
+    username: ${{ secrets.FTP_USERNAME }}
+    password: ${{ secrets.FTP_PASSWORD }}
+    protocol: ftps
+    local-dir: ./dist/
+    server-dir: ./public_html/
+    max-retries: 5
+    retry-delay: 1000
+```
+
+Replace the example tag with a tag you have pushed to this fork. Add any FTP values used by your existing workflow (such as `port`, `exclude`, or `state-name`) unchanged. The action builds this repository's CLI at runtime, so it needs Node.js/npm and network access to install the locked dependencies.
+
 ---
 
 ## Settings

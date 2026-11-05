@@ -1,0 +1,122 @@
+name: FTP Deploy (recovery fork)
+description: Sync files to an FTP server with retry and recovery handling
+author: Hanzyusuf
+inputs:
+  server:
+    description: FTP server hostname
+    required: true
+  username:
+    description: FTP username
+    required: true
+  password:
+    description: FTP password
+    required: true
+  protocol:
+    description: ftp, ftps, or ftps-legacy
+    required: false
+    default: ftp
+  port:
+    description: FTP server port
+    required: false
+    default: '21'
+  local-dir:
+    description: Local directory to deploy; must end with /
+    required: false
+    default: ./
+  server-dir:
+    description: Remote directory to deploy into; must end with /
+    required: false
+    default: ./
+  state-name:
+    description: Relative path of the sync state file
+    required: false
+    default: .ftp-deploy-sync-state.json
+  dry-run:
+    description: Print changes without applying them
+    required: false
+    default: 'false'
+  dangerous-clean-slate:
+    description: Delete all remote contents before deploying
+    required: false
+    default: 'false'
+  exclude:
+    description: Exclude glob patterns, one per line
+    required: false
+    default: |-
+      **/.git*
+      **/.git*/**
+      **/node_modules/**
+  log-level:
+    description: minimal, standard, or verbose
+    required: false
+    default: standard
+  security:
+    description: strict or loose TLS certificate validation
+    required: false
+    default: loose
+  timeout:
+    description: FTP operation timeout in milliseconds
+    required: false
+    default: '30000'
+  max-retries:
+    description: Retries after recoverable FTP errors; 0 disables retrying
+    required: false
+    default: '5'
+  retry-delay:
+    description: Initial retry delay in milliseconds; exponential backoff is capped at 30 seconds
+    required: false
+    default: '1000'
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install and build deployer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci
+        npm run build
+    - name: Deploy over FTP
+      shell: bash
+      env:
+        FTP_SERVER: ${{ inputs.server }}
+        FTP_USERNAME: ${{ inputs.username }}
+        FTP_PASSWORD: ${{ inputs.password }}
+        FTP_PROTOCOL: ${{ inputs.protocol }}
+        FTP_PORT: ${{ inputs.port }}
+        FTP_LOCAL_DIR: ${{ inputs.local-dir }}
+        FTP_SERVER_DIR: ${{ inputs.server-dir }}
+        FTP_STATE_NAME: ${{ inputs.state-name }}
+        FTP_DRY_RUN: ${{ inputs.dry-run }}
+        FTP_CLEAN_SLATE: ${{ inputs.dangerous-clean-slate }}
+        FTP_EXCLUDE: ${{ inputs.exclude }}
+        FTP_LOG_LEVEL: ${{ inputs.log-level }}
+        FTP_SECURITY: ${{ inputs.security }}
+        FTP_TIMEOUT: ${{ inputs.timeout }}
+        FTP_MAX_RETRIES: ${{ inputs.max-retries }}
+        FTP_RETRY_DELAY: ${{ inputs.retry-delay }}
+      run: |
+        args=(
+          --server "$FTP_SERVER"
+          --username "$FTP_USERNAME"
+          --password "$FTP_PASSWORD"
+          --protocol "$FTP_PROTOCOL"
+          --port "$FTP_PORT"
+          --local-dir "$FTP_LOCAL_DIR"
+          --server-dir "$FTP_SERVER_DIR"
+          --state-name "$FTP_STATE_NAME"
+          --log-level "$FTP_LOG_LEVEL"
+          --security "$FTP_SECURITY"
+          --timeout "$FTP_TIMEOUT"
+          --max-retries "$FTP_MAX_RETRIES"
+          --retry-delay "$FTP_RETRY_DELAY"
+        )
+        if [[ "$FTP_DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+        if [[ "$FTP_CLEAN_SLATE" == "true" ]]; then args+=(--dangerous-clean-slate); fi
+        while IFS= read -r pattern; do
+          [[ -n "$pattern" ]] && args+=(--exclude "$pattern")
+        done <<< "$FTP_EXCLUDE"
+        node "$GITHUB_ACTION_PATH/dist/cli.js" "${args[@]}"
