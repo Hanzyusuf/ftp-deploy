@@ -86,12 +86,13 @@ export async function prepareArchive(output: string, options: ArchiveOptions = {
 export async function uploadArchive(output: string, options: IFtpDeployArguments): Promise<string> {
     const args = getDefaultSettings(options);
     const client = new ftp.Client(args.timeout);
-    const operations = new FtpOperations(client, args, new Logger(args["log-level"]), new Timings());
+    const logger = new Logger(args["log-level"]);
+    const operations = new FtpOperations(client, args, logger, new Timings());
     try {
         await operations.connect();
         const entries = await operations.run("inspect bootstrap destination", async () => client.list(operations.rootPath));
         if (entries.length > 0) {
-            throw new Error("Archive bootstrap requires an empty server-dir; remove or move existing content before uploading");
+            logger.standard("⚠️ server-dir is not empty. The ZIP will still upload, but extracting it may overwrite matching files and leave other server files in place.");
         }
         // Include the upload time and GitHub run ID (if available) in the filename.
         const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");

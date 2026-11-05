@@ -95,7 +95,10 @@ describe("manual archive bootstrap", () => {
             expect(name).toMatch(/^ftp-deploy-bootstrap-\d{8}T\d{6}Z(?:-run-\d+)?-[a-f0-9]{12}\.zip$/);
             const destination = path.join(remote, "site");
             expect(fs.readdirSync(destination)).toEqual([name]);
-            await expect(uploadArchive(output, options)).rejects.toThrow("empty server-dir");
+            fs.writeFileSync(path.join(destination, "keep-existing.txt"), "existing");
+            const secondArchive = await uploadArchive(output, options);
+            expect(fs.existsSync(path.join(destination, "keep-existing.txt"))).toBe(true);
+            expect(fs.existsSync(path.join(destination, secondArchive))).toBe(true);
 
             // Simulate a completed Hostinger file-manager extraction, then remove the ZIP.
             for (const [entry, contents] of await entriesInZip(path.join(destination, name))) {
@@ -104,6 +107,7 @@ describe("manual archive bootstrap", () => {
                 else { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, contents); }
             }
             fs.rmSync(path.join(destination, name));
+            fs.rmSync(path.join(destination, secondArchive));
             const uploadSpy = jest.spyOn(ftp.Client.prototype, "uploadFrom");
             try { await deploy(options); }
             finally { uploadSpy.mockRestore(); }
