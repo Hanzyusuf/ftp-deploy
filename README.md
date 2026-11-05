@@ -76,7 +76,7 @@ This repository includes a composite GitHub Action with the same core inputs use
 
 ```yaml
 - name: Deploy to FTP
-  uses: Hanzyusuf/ftp-deploy@v1.2.7-zip-first-deployment
+  uses: Hanzyusuf/ftp-deploy@v1.2.8
   with:
     server: ${{ secrets.FTP_SERVER }}
     username: ${{ secrets.FTP_USERNAME }}
