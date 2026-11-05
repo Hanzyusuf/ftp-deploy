@@ -2,6 +2,8 @@ import prettyBytes from "pretty-bytes";
 import type * as ftp from "basic-ftp";
 import { DiffResult, ErrorCode, IFilePath } from "./types";
 import { ILogger, pluralize, retryRequest, ITimings } from "./utilities";
+import { FtpOperations } from "./ftpOperations";
+import path from "path";
 
 export async function ensureDir(client: ftp.Client, logger: ILogger, timings: ITimings, folder: string): Promise<void> {
     timings.start("changingDir");
@@ -29,7 +31,7 @@ interface ISyncProvider {
 }
 
 export class FTPSyncProvider implements ISyncProvider {
-    constructor(client: ftp.Client, logger: ILogger, timings: ITimings, localPath: string, serverPath: string, stateName: string, dryRun: boolean) {
+    constructor(client: ftp.Client, logger: ILogger, timings: ITimings, localPath: string, serverPath: string, stateName: string, dryRun: boolean, operations?: FtpOperations) {
         this.client = client;
         this.logger = logger;
         this.timings = timings;
@@ -37,6 +39,7 @@ export class FTPSyncProvider implements ISyncProvider {
         this.serverPath = serverPath;
         this.stateName = stateName;
         this.dryRun = dryRun;
+        this.operations = operations;
     }
 
     private client: ftp.Client;
@@ -46,6 +49,16 @@ export class FTPSyncProvider implements ISyncProvider {
     private serverPath: string;
     private dryRun: boolean;
     private stateName: string;
+    private operations?: FtpOperations;
+
+    private async run(name: string, callback: () => Promise<unknown>): Promise<void> {
+        if (this.operations) { await this.operations.run(name, callback); }
+        else { await retryRequest(this.logger, callback); }
+    }
+
+    private remotePath(name: string): string {
+        return this.operations ? `${this.operations.rootPath.replace(/\/$/, "")}/${name}` : name;
+    }
 
 
     /**
@@ -92,11 +105,17 @@ export class FTPSyncProvider implements ISyncProvider {
             this.logger.verbose(`  no need to change dir`);
         }
         else {
-            await ensureDir(this.client, this.logger, this.timings, path.folders.join("/"));
+            if (this.operations) {
+                await this.run(`create folder ${folderPath}`, async () => {
+                    await this.client.ensureDir(this.remotePath(path.folders!.join("/")));
+                    await this.client.cd(this.operations!.rootPath);
+                });
+            }
+            else { await ensureDir(this.client, this.logger, this.timings, path.folders.join("/")); }
         }
 
         // navigate back to the root folder
-        await this.upDir(path.folders?.length);
+        if (!this.operations) { await this.upDir(path.folders?.length); }
 
         this.logger.verbose(`  completed`);
     }
@@ -106,9 +125,11 @@ export class FTPSyncProvider implements ISyncProvider {
 
         if (this.dryRun === false) {
             try {
-                await retryRequest(this.logger, async () => await this.client.remove(filePath));
+                if (this.operations) { await this.operations.removeFile(this.remotePath(filePath)); }
+                else { await retryRequest(this.logger, async () => await this.client.remove(filePath)); }
             }
             catch (e: any) {
+                if (this.operations) { throw e; }
                 // this error is common when a file was deleted on the server directly
                 if (e?.code === ErrorCode.FileNotFoundOrNoAccess) {
                     this.logger.standard("File not found or you don't have access to the file - skipping...");
@@ -124,14 +145,16 @@ export class FTPSyncProvider implements ISyncProvider {
     }
 
     async removeFolder(folderPath: string) {
-        const absoluteFolderPath = "/" + (this.serverPath.startsWith("./") ? this.serverPath.replace("./", "") : this.serverPath) + folderPath;
+        const absoluteFolderPath = this.operations ? this.remotePath(folderPath) : "/" + (this.serverPath.startsWith("./") ? this.serverPath.replace("./", "") : this.serverPath) + folderPath;
         this.logger.all(`removing folder "${absoluteFolderPath}"`);
 
         if (this.dryRun === false) {
             try {
-                await retryRequest(this.logger, async () => await this.client.removeDir(absoluteFolderPath));
+                if (this.operations) { await this.operations.removeFolder(absoluteFolderPath); }
+                else { await this.run(`remove folder ${folderPath}`, async () => this.client.removeDir(absoluteFolderPath)); }
             }
             catch (e: any) {
+                if (this.operations) { throw e; }
                 if (e?.code === ErrorCode.FileNotFoundOrNoAccess) {
                     this.logger.standard("Directory not found or you don't have access to the file - skipping...");
                 }
@@ -150,7 +173,7 @@ export class FTPSyncProvider implements ISyncProvider {
         this.logger.all(`${typePresent} "${filePath}"`);
 
         if (this.dryRun === false) {
-            await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + filePath, filePath));
+            await this.run(`upload ${filePath}`, async () => this.client.uploadFrom(this.localPath + filePath, this.remotePath(filePath)));
         }
 
         this.logger.verbose(`  file ${typePast}`);
@@ -191,9 +214,30 @@ export class FTPSyncProvider implements ISyncProvider {
         }
 
         this.logger.all(`----------------------------------------------------------------`);
-        this.logger.all(`🎉 Sync complete. Saving current server state to "${this.serverPath + this.stateName}"`);
+        this.logger.all(`Saving current server state to "${this.serverPath + this.stateName}"`);
         if (this.dryRun === false) {
-            await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + this.stateName, this.stateName));
+            if (!this.operations) {
+                await retryRequest(this.logger, async () => await this.client.uploadFrom(this.localPath + this.stateName, this.stateName));
+            }
+            else {
+                // Upload under a new name first, so a failed upload leaves the old state alone.
+                const temporary = `${this.stateName}.upload-${process.pid}-${Date.now()}`;
+                const backup = `${this.stateName}.backup`;
+                await this.run("upload temporary server state", async () => this.client.uploadFrom(this.localPath + this.stateName, this.remotePath(temporary)));
+                const directory = this.remotePath(path.posix.dirname(this.stateName));
+                const entries = await this.operations.run("inspect server state", async () => this.client.list(directory));
+                const backupExists = entries.some(entry => entry.name === path.posix.basename(backup));
+                if (entries.some(entry => entry.name === path.posix.basename(this.stateName))) {
+                    // Keep the backup if an earlier attempt did not finish.
+                    if (backupExists) { throw new Error("Server state backup already exists; refusing to overwrite the recovery state"); }
+                    await this.run("backup server state", async () => this.client.rename(this.remotePath(this.stateName), this.remotePath(backup)));
+                }
+                await this.run("publish server state", async () => this.client.rename(this.remotePath(temporary), this.remotePath(this.stateName)));
+                if (backupExists || entries.some(entry => entry.name === path.posix.basename(this.stateName))) {
+                    await this.operations.removeFile(this.remotePath(backup));
+                }
+            }
         }
+        this.logger.all(`🎉 Sync complete.`);
     }
 }

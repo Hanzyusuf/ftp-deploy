@@ -590,6 +590,8 @@ describe("getLocalFiles", () => {
             "log-level": "standard",
             security: "loose",
             timeout: 30000,
+            "max-retries": 5,
+            "retry-delay": 1000,
         });
 
         const mainYamlDiff = localDirDiffs.data.find(diff => diff.name === "workflows/main.yml")! as IFile;
@@ -741,7 +743,9 @@ describe("getDefaultSettings", () => {
             exclude: excludeDefaults,
             "log-level": "standard",
             security: "loose",
-            timeout: 30000
+            timeout: 30000,
+            "max-retries": 5,
+            "retry-delay": 1000
         });
     });
 
@@ -760,7 +764,9 @@ describe("getDefaultSettings", () => {
             exclude: [],
             "log-level": "verbose",
             security: "strict",
-            timeout: 1234
+            timeout: 1234,
+            "max-retries": 3,
+            "retry-delay": 100
         };
 
         expect(getDefaultSettings(customSettings)).toEqual(customSettings);

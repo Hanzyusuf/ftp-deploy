@@ -162,6 +162,18 @@ export class Timer {
 }
 
 export function getDefaultSettings(withoutDefaults: IFtpDeployArguments): IFtpDeployArgumentsWithDefaults {
+    const maxRetries = withoutDefaults["max-retries"] ?? 5;
+    const retryDelay = withoutDefaults["retry-delay"] ?? 1000;
+    const timeout = withoutDefaults.timeout ?? 30000;
+    if (!Number.isSafeInteger(maxRetries) || maxRetries < 0 || maxRetries > 100) {
+        throw new Error("max-retries must be an integer between 0 and 100");
+    }
+    if (!Number.isSafeInteger(retryDelay) || retryDelay < 0 || retryDelay > 30000) {
+        throw new Error("retry-delay must be an integer between 0 and 30000 milliseconds");
+    }
+    if (!Number.isSafeInteger(timeout) || timeout < 1) {
+        throw new Error("timeout must be a positive integer in milliseconds");
+    }
     if (withoutDefaults["local-dir"] !== undefined) {
         if (!withoutDefaults["local-dir"].endsWith("/")) {
             throw new Error("local-dir should be a folder (must end with /)");
@@ -174,6 +186,12 @@ export function getDefaultSettings(withoutDefaults: IFtpDeployArguments): IFtpDe
         }
     }
 
+    const stateName = withoutDefaults["state-name"] ?? ".ftp-deploy-sync-state.json";
+    if (!stateName || stateName.startsWith("/") || stateName.includes("\\") ||
+        stateName.split("/").some(segment => segment === "" || segment === "." || segment === "..")) {
+        throw new Error("state-name must be a relative file path without empty or parent directory segments");
+    }
+
     return {
         "server": withoutDefaults.server,
         "username": withoutDefaults.username,
@@ -182,13 +200,15 @@ export function getDefaultSettings(withoutDefaults: IFtpDeployArguments): IFtpDe
         "protocol": withoutDefaults.protocol ?? "ftp",
         "local-dir": withoutDefaults["local-dir"] ?? "./",
         "server-dir": withoutDefaults["server-dir"] ?? "./",
-        "state-name": withoutDefaults["state-name"] ?? ".ftp-deploy-sync-state.json",
+        "state-name": stateName,
         "dry-run": withoutDefaults["dry-run"] ?? false,
         "dangerous-clean-slate": withoutDefaults["dangerous-clean-slate"] ?? false,
         "exclude": withoutDefaults.exclude ?? excludeDefaults,
         "log-level": withoutDefaults["log-level"] ?? "standard",
         "security": withoutDefaults.security ?? "loose",
-        "timeout": withoutDefaults.timeout ?? 30000,
+        "timeout": timeout,
+        "max-retries": maxRetries,
+        "retry-delay": retryDelay,
     };
 }
 

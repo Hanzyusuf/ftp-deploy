@@ -67,6 +67,12 @@ export interface IFtpDeployArguments {
      * @default 30000 (30 seconds)
      */
     timeout?: number;
+
+    /** How many times to try again after a temporary FTP error. @default 5 */
+    "max-retries"?: number;
+
+    /** Wait this many milliseconds before the first retry. The wait doubles each time, up to 30 seconds. @default 1000 */
+    "retry-delay"?: number;
 }
 
 export interface IFtpDeployArgumentsWithDefaults {
@@ -84,6 +90,8 @@ export interface IFtpDeployArgumentsWithDefaults {
     "log-level": "minimal" | "standard" | "verbose";
     security: "strict" | "loose";
     timeout: number;
+    "max-retries": number;
+    "retry-delay": number;
 }
 
 export interface IFile {
