@@ -53,6 +53,23 @@ deployMyCode();
 ### Automatically Deploying
 If you use github as source control you can automatically re-deploy your site on every git commit. [Read more](https://github.com/SamKirkland/FTP-Deploy-Action)
 
+### First deployment with many files
+
+Uploading thousands of files over FTP can be slow. This option makes one ZIP containing your files and the state file used for later deployments, then uploads the ZIP over FTP. You extract it with your host's file manager; FTP cannot extract ZIPs.
+
+```sh
+ftp-deploy --server ftp.example.com --username user --password pass --local-dir ./site/ --server-dir ./public_html/ --archive-output ./bootstrap.zip
+```
+
+The server directory must be empty. Save the local ZIP **outside** `--local-dir` (if `--local-dir` is `./`, choose an output path outside the current folder). Use the same `--local-dir`, `--server-dir`, `--exclude`, and `--state-name` settings in later deployments. The command will not overwrite an existing local ZIP.
+
+1. Find the ZIP in `--server-dir` using the name printed by the command. Its name includes the date, time, a unique suffix, and the GitHub run ID if available.
+2. Extract its contents **directly into `--server-dir`**, not a new subfolder. Check that all files and the state file were extracted. If extraction fails, remove the partly extracted files (including the state file) and start again with an empty directory.
+3. Delete the ZIP from the server. It could be downloadable if left in a public website folder.
+4. Run future deployments normally, **without** `--archive-output`. Unchanged files will be skipped.
+
+If upload fails, delete any partial ZIP on the server and the local output ZIP before retrying. Keep files unchanged while building the ZIP, allow enough space for it locally and on the server, and prefer `--protocol ftps` for an encrypted transfer. Do not run another deployment until extraction finishes.
+
 ### Use this recovery fork as a GitHub Action
 
 This repository includes a composite GitHub Action with the same core inputs used by the original FTP Deploy Action, plus `max-retries` and `retry-delay`. To switch an existing workflow, change only the `uses` reference to this repository and a release tag; keep your existing `with` settings:
@@ -89,6 +106,7 @@ To list all commands with examples simply run `ftp-deploy` without any options.
 | `--local-dir`             | No       | `./myFolderToPublish/`     | `./`                                          | Local folder to upload from, must end with trailing slash `/`                                                                                                       |
 | `--server-dir`            | No       | `./public_html/`           | `./`                                          | Server folder to upload into, must end with trailing slash `/`                                                                                                      |
 | `--state-name`            | No       | `folder/.sync-state.json`  | `.ftp-deploy-sync-state.json`                 | ftp-deploy uses this file to track what's been deployed already, so only differences can be published. If you don't like the name or location you can customize it |
+| `--archive-output`        | No       | `./bootstrap.zip`          |                                               | Save and upload a ZIP with the files and sync state; extract it on the server with your host's file manager |
 | `--dry-run`               | No       | `true`                     | `false`                                       | Prints which modifications will be made with current config options, but doesn't actually make any changes                                                         |
 | `--dangerous-clean-slate` | No       | `true`                     | `false`                                       | Deletes ALL contents of server-dir, even items marked as `--exclude` argument                                                                                      |
 | `--exclude`               | No       | `nuclearLaunchCodes.txt`   | `**/.git*` `**/.git*/**` `**/node_modules/**` | An array of glob patterns, these files will not be included in the publish/delete process                                                                          |

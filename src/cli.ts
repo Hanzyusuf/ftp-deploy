@@ -3,6 +3,7 @@
 import { deploy, excludeDefaults } from "./module";
 import yargs from "yargs";
 import { IFtpDeployArguments } from "./types";
+import { prepareArchive, uploadArchive } from "./archiveBootstrap";
 
 const argv = yargs.options({
     "server": { type: "string", demandOption: true },
@@ -13,6 +14,7 @@ const argv = yargs.options({
     "local-dir": { type: "string", default: "./" },
     "server-dir": { type: "string", default: "./" },
     "state-name": { type: "string", default: ".ftp-deploy-sync-state.json" },
+    "archive-output": { type: "string", description: "Save a ZIP locally and upload it to an empty server-dir; extract it in your host's file manager" },
     "dry-run": { type: "boolean", default: false, description: "Prints which modifications will be made with current config options, but doesn't actually make any changes" },
     "dangerous-clean-slate": { type: "boolean", default: false, description: "Deletes ALL contents of server-dir, even items in excluded with 'exclude' argument" },
     "exclude": { type: "array", default: excludeDefaults, description: "An array of glob patterns, these files will not be included in the publish/delete process" },
@@ -29,8 +31,18 @@ const argv = yargs.options({
 
 
 async function runScript() {
-    await deploy(argv as IFtpDeployArguments);
+    const args = await argv;
+    if (args["archive-output"]) {
+        if (args["dry-run"] || args["dangerous-clean-slate"]) { throw new Error("Archive mode cannot be combined with dry-run or dangerous-clean-slate"); }
+        const state = await prepareArchive(args["archive-output"], {
+            "local-dir": args["local-dir"], "state-name": args["state-name"], exclude: args.exclude as string[]
+        });
+        const remoteName = await uploadArchive(args["archive-output"], args as IFtpDeployArguments);
+        console.log(`Uploaded ${remoteName} to ${args["server-dir"]}: ${state.data.length} files/folders and ${args["state-name"]} are inside. Extract it directly into ${args["server-dir"]} with your host's file manager, verify extraction, and delete the ZIP before running the next FTP deployment.`);
+        return;
+    }
+    await deploy(args as IFtpDeployArguments);
 }
 
 
-runScript();
+runScript().catch(error => { console.error(error); process.exitCode = 1; });

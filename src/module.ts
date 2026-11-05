@@ -1,6 +1,7 @@
 import { deploy as deployCustom } from "./deploy";
 import { IFtpDeployArguments } from "./types";
 import { getDefaultSettings, Logger, Timings } from "./utilities";
+export { prepareArchive, uploadArchive, ArchiveOptions } from "./archiveBootstrap";
 
 /**
  * Default excludes, ignores all git files and the node_modules folder
