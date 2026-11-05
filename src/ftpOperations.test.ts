@@ -64,6 +64,19 @@ describe("deployment-scoped FTP recovery", () => {
         expect(timeout).toHaveBeenCalledTimes(3);
     });
 
+    test("retries when basic-ftp reports an unexpected FIN", async () => {
+        const client = mockClient();
+        const operations = new FtpOperations(client as any, args(), logger, new Timings());
+        await operations.connect();
+        const operation = jest.fn()
+            .mockRejectedValueOnce(new Error("Server sent FIN packet unexpectedly, closing connection."))
+            .mockResolvedValue("recovered");
+
+        await expect(operations.run("create folder", operation)).resolves.toBe("recovered");
+        expect(operation).toHaveBeenCalledTimes(2);
+        expect(client.access).toHaveBeenCalledTimes(2);
+    });
+
     test("server state list errors do not masquerade as a first publish", async () => {
         const client = mockClient();
         const options = args();

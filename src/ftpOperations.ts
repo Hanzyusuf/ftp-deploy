@@ -9,7 +9,7 @@ const transientReplies = new Set([421, 425, 426, 450, 451]);
 // Some connection failures come without an error code, so check their messages too.
 function isSocketFailure(error: any): boolean {
     return typeof error?.message === "string" &&
-        /^(?:Client is closed because )?(?:Timeout \(|Socket closed due to transmission error \()/.test(error.message);
+        /^(?:Client is closed because )?(?:Timeout \(|Socket closed due to transmission error \(|Server sent FIN packet unexpectedly|Server closed connection unexpectedly)/.test(error.message);
 }
 
 function isRecoverable(error: any): boolean {
